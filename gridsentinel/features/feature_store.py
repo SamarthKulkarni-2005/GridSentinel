@@ -207,7 +207,7 @@ def build_meter_features(
         v_stab = signal_voltage_stability(voltage_all, norm_std=voltage_std_norm)
 
         # Billing ratio
-        billed = float(m_data["billed_kwh"].iloc[-1]) if "billed_kwh" in m_data.columns else 0.0
+        billed = float(m_data["billed_kwh"].iloc[-1]) if "billed_kwh" in m_data.columns else float(kwh_arr.sum())
         total_kwh = float(kwh_arr.sum())
         bill_ratio = signal_billing_ratio(billed, total_kwh)
 
@@ -337,11 +337,16 @@ def compute_thermal_hours(
         load_pct = group["feeder_kwh"] / max(capacity_kw, 1e-9)
         above = (load_pct > threshold_pct).astype(float)
 
-        # Each row represents 15 min = 0.25 hours; window = 6h = 24 intervals
-        intervals_per_hour = 4
+        # Detect interval size from timestamps; fall back to 1h if insufficient data
+        if len(group) >= 2:
+            delta = (pd.DatetimeIndex(group["timestamp"]).to_series().diff().dropna().median())
+            hours_per_interval = delta.total_seconds() / 3600.0
+        else:
+            hours_per_interval = 1.0
+        intervals_per_hour = max(1, round(1.0 / hours_per_interval))
         window_intervals = window_hours * intervals_per_hour
 
-        rolling_hours = above.rolling(window=window_intervals, min_periods=1).sum() * 0.25
+        rolling_hours = above.rolling(window=window_intervals, min_periods=1).sum() * hours_per_interval
         group["hours_above_80pct"] = rolling_hours.values
         results.append(group)
 

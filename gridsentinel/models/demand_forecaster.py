@@ -310,7 +310,7 @@ class DemandForecaster:
         model_path = Path(model_path)
         scaler_path = Path(scaler_path)
 
-        checkpoint = torch.load(str(model_path), map_location=self.device)
+        checkpoint = torch.load(str(model_path), map_location=self.device, weights_only=False)
         self.hidden_size    = checkpoint.get("hidden_size", self.hidden_size)
         self.num_layers     = checkpoint.get("num_layers", self.num_layers)
         self.dropout        = checkpoint.get("dropout", self.dropout)

@@ -178,6 +178,7 @@ async def startup_load_data() -> None:
 
     candidates = [
         Path(os.environ.get("GS_DATA_PATH", "")),
+        Path(__file__).parent.parent.parent / "synthetic_grid_data.csv",
         Path(__file__).parent.parent.parent.parent / "synthetic_grid_data.csv",
         Path("D:/BESCOM/synthetic_grid_data.csv"),
         Path("../synthetic_grid_data.csv"),
@@ -963,13 +964,43 @@ async def shap_detail(meter_id: str):
             meter_slice["voltage_b"].values,
         ]).astype(float)
 
+        # DTW divergence: compare meter's hourly profile against population mean
+        full_meter_df: pd.DataFrame | None = _store.get("meter_df")
+        if full_meter_df is not None and not full_meter_df.empty:
+            mean_hourly = (
+                full_meter_df.assign(_h=full_meter_df["timestamp"].dt.hour)
+                .groupby("_h")["kwh"].mean()
+                .reindex(range(24), fill_value=0.0)
+                .values
+            )
+            centroid_norm = max(float(np.linalg.norm(mean_hourly)), cfg.cass.dtw_norm_denom)
+            meter_hourly = (
+                meter_slice.assign(_h=ts_index.hour)
+                .groupby("_h")["kwh"].mean()
+                .reindex(range(24), fill_value=0.0)
+                .values
+            )
+            dtw_val = float(np.clip(np.linalg.norm(meter_hourly - mean_hourly) / centroid_norm, 0.0, 1.0))
+        else:
+            dtw_val = 0.0
+
+        # DT balance error: meter sum vs feeder total for the same transformer
+        dt_df_store: pd.DataFrame | None = _store.get("dt_df")
+        dt_id_val = meter_slice["dt_id"].iloc[0] if "dt_id" in meter_slice.columns else None
+        if dt_df_store is not None and dt_id_val is not None and full_meter_df is not None:
+            feeder_total = float(dt_df_store[dt_df_store["dt_id"] == dt_id_val]["feeder_kwh"].sum())
+            meter_total  = float(full_meter_df[full_meter_df["dt_id"] == dt_id_val]["kwh"].sum())
+            bal_val = signal_dt_balance_error(meter_total, feeder_total) if feeder_total > 0 else 0.0
+        else:
+            bal_val = 0.0
+
         signals = {
-            "dtw_divergence":     0.0,
+            "dtw_divergence":     dtw_val,
             "voltage_stability":  signal_voltage_stability(voltage_all, cfg.cass.voltage_std_norm),
             "billing_ratio":      signal_billing_ratio(billed, total_kwh),
             "entropy":            signal_entropy(kwh_arr),
             "night_load_anomaly": signal_night_load_anomaly(kwh_arr, ts_index),
-            "dt_balance_error":   0.0,
+            "dt_balance_error":   bal_val,
             "repeat_anomaly":     signal_repeat_anomaly(kwh_arr, window_count=cfg.cass.repeat_window_count),
         }
 
@@ -1024,10 +1055,40 @@ async def report_summary():
             ("MTR_000005", 41.0, "moderate"),
         ]
 
-    # GSI demo values per transformer
-    gsi_per_dt = [
-        ("DT_1", 62), ("DT_2", 55), ("DT_3", 38), ("DT_4", 71), ("DT_5", 48)
-    ]
+    # GSI values per transformer — use real computed scores if available
+    dt_df_store: pd.DataFrame | None = _store.get("dt_df")
+    meter_df_store: pd.DataFrame | None = _store.get("meter_df")
+    if dt_df_store is not None and meter_df_store is not None:
+        cfg_pdf = load_config()
+        gsi_weights_pdf = cfg_pdf.gsi.weights.model_dump()
+        gsi_per_dt = []
+        for dt_id, grp in dt_df_store.groupby("dt_id"):
+            last = grp.sort_values("timestamp").iloc[-1]
+            feeder = float(last["feeder_kwh"])
+            baseline = float(grp["feeder_kwh"].mean())
+            cap = float(last["capacity_kva"])
+            age = float(last["age_years"])
+            temp = float(last["temperature_c"])
+            ev = float(last.get("ev_density", 0.1))
+            solar = float(last.get("solar_irradiance", 0.0))
+            ts_pdf = pd.Timestamp(last["timestamp"])
+            sigs_pdf = {
+                "load_quantile":        signal_load_quantile(feeder, cap, 0.9),
+                "temperature_derating": signal_temperature_derating(temp, cfg_pdf.gsi.temp_threshold, cfg_pdf.gsi.temp_derate_rate),
+                "power_factor_penalty": signal_power_factor_penalty(0.9),
+                "thermal_soak":         signal_thermal_soak(0.0, cfg_pdf.gsi.thermal_tau),
+                "ev_load_risk":         signal_ev_load_risk(ev, ts_pdf.hour),
+                "transformer_age":      signal_transformer_age(age),
+                "calendar_signal":      signal_calendar(ts_pdf.hour, ts_pdf.dayofweek, ts_pdf.month, is_holiday(ts_pdf.date())),
+                "pv_duck_curve":        signal_pv_duck_curve(solar, feeder, baseline),
+            }
+            gsi_val = round(compute_gsi(signals=sigs_pdf, weights=gsi_weights_pdf, u_tconf=1.0, mape_scale=1.0))
+            gsi_per_dt.append((str(dt_id), gsi_val))
+        gsi_per_dt = sorted(gsi_per_dt, key=lambda x: x[1], reverse=True)[:5]
+    else:
+        gsi_per_dt = [
+            ("DT_1", 62), ("DT_2", 55), ("DT_3", 38), ("DT_4", 71), ("DT_5", 48)
+        ]
 
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -1167,13 +1228,14 @@ async def score_meter(request: MeterScoreRequest) -> MeterScoreResponse:
         pipeline = _get_pipeline()
         if pipeline.theft_detector is not None and pipeline.theft_detector.model is not None:
             last_ts = pd.Timestamp(df["timestamp"].iloc[-1])
+            trend_slope = float(np.polyfit(np.arange(len(kwh_arr), dtype=float), kwh_arr, 1)[0]) if len(kwh_arr) >= 2 else 0.0
             x_feat  = np.array([[
                 signals["dtw_divergence"], signals["voltage_stability"], signals["billing_ratio"],
                 signals["entropy"], signals["night_load_anomaly"], signals["dt_balance_error"],
                 signals["repeat_anomaly"], pf_mean,
                 float(kwh_arr[-672:].mean()) if len(kwh_arr) >= 672 else float(kwh_arr.mean()),
                 float(kwh_arr[-672:].std())  if len(kwh_arr) >= 672 else float(kwh_arr.std()),
-                0.0, float(last_ts.hour), float(last_ts.dayofweek), float(last_ts.month),
+                trend_slope, float(last_ts.hour), float(last_ts.dayofweek), float(last_ts.month),
             ]])
             y_proba = float(pipeline.theft_detector.predict_proba(x_feat)[0])
             try:

@@ -312,7 +312,8 @@ class GridSentinelPipeline:
 
             # Forecast
             if len(fc_slice) > lookback_window:
-                q5_arr, q95_arr = self.demand_forecaster.predict(fc_slice, feature_cols=feat_cols)
+                _preds = self.demand_forecaster.predict(fc_slice, feature_cols=feat_cols)
+                q5_arr, q95_arr = _preds[:, 0], _preds[:, -1]
             else:
                 mean_kwh = float(fc_slice["kwh"].mean()) if len(fc_slice) > 0 else 0.0
                 q5_arr = np.full(len(fc_slice), mean_kwh * 0.9)
