@@ -1,0 +1,108 @@
+# ── Data ────────────────────────────────────────────────────────────────────
+data:
+  raw_meter_path: "data/raw/meter_readings.parquet"
+  raw_dt_path: "data/raw/transformer_readings.parquet"
+  resample_freq: "15T"          # 15-minute resolution
+  lookback_window: 96           # 24 hours of 15-min intervals
+
+# ── CASS Weights ────────────────────────────────────────────────────────────
+cass:
+  weights:
+    dtw_divergence: 0.25
+    voltage_stability: 0.10
+    billing_ratio: 0.20
+    entropy: 0.10
+    night_load_anomaly: 0.15
+    dt_balance_error: 0.15
+    repeat_anomaly: 0.05
+  # Sigmoid parameters
+  sigmoid_shift: 0.35
+  sigmoid_scale: 8.0
+  # Normalisation denominators (calibrated to field data)
+  dtw_norm_denom: 3.0
+  voltage_std_norm: 0.15
+  night_ratio_scale: 2.0
+  dt_error_norm: 0.5
+  repeat_window_count: 5
+
+# ── GSI Weights ─────────────────────────────────────────────────────────────
+gsi:
+  weights:
+    load_quantile: 0.30
+    temperature_derating: 0.15
+    power_factor_penalty: 0.15
+    thermal_soak: 0.10
+    ev_load_risk: 0.10
+    transformer_age: 0.10
+    calendar_signal: 0.05
+    pv_duck_curve: 0.05
+  # Temperature derating
+  temp_threshold: 32            # Celsius; above this derating begins
+  temp_derate_rate: 0.05
+  # Thermal soak time constant (hours)
+  thermal_tau: 4.0
+  # Transformer age reference (years) — log(1+25)=log(26)
+  age_ref: 25
+
+# ── ML Models ────────────────────────────────────────────────────────────────
+models:
+  xgboost:
+    n_estimators: 500
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+    scale_pos_weight: 10        # Handles class imbalance (theft is rare)
+    eval_metric: "aucpr"
+    early_stopping_rounds: 30
+    random_state: 42
+  lstm:
+    hidden_size: 128
+    num_layers: 2
+    dropout: 0.2
+    quantiles: [0.05, 0.95]
+    epochs: 100
+    batch_size: 64
+    lr: 0.001
+    patience: 10                # Early stopping patience
+    random_state: 42
+
+# ── Economic Model ───────────────────────────────────────────────────────────
+economics:
+  fp_cost_inr: 8500             # Cost per false positive investigation
+  fn_cost_per_month_inr: 5500   # Monthly loss per undetected theft case
+  default_theft_duration_months: 3   # Assumed months undetected if FN
+
+# ── GSS Weights (Core) ───────────────────────────────────────────────────────
+gss_core:
+  w_cass: 0.35
+  w_gsi: 0.20
+  w_econ: 0.30
+  w_robust: 0.15
+
+# ── GSS Weights (Extended / Final) ───────────────────────────────────────────
+gss_final:
+  w_cass: 0.30
+  w_gsi: 0.15
+  w_econ: 0.25
+  w_robust: 0.10
+  w_delay: 0.08
+  w_energy: 0.07
+  w_calib: 0.05
+
+# ── Pareto Validity Constraints ──────────────────────────────────────────────
+constraints:
+  max_fpr: 0.02
+  min_recall: 0.85
+  max_mape: 0.07
+
+# ── Robustness Testing ───────────────────────────────────────────────────────
+robustness:
+  noise_std: 0.05               # Gaussian noise std added to features for noisy test
+  noise_seed: 99
+
+# ── API ──────────────────────────────────────────────────────────────────────
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1

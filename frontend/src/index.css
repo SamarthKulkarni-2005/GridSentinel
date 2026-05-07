@@ -1,0 +1,86 @@
+/* ============================================================
+   GridSentinel OS — Global Tokens (Exon Cybersecurity Aesthetic)
+   ============================================================ */
+:root {
+  --bg:          #0a0a0a;
+  --bg-card:     #111111;
+  --bg-card-2:   #161616;
+  --bg-card-3:   #1c1c1c;
+  --border:      rgba(255,255,255,0.07);
+  --border-glow: rgba(255,255,255,0.12);
+
+  --emerald:     #00e676;
+  --emerald-dim: rgba(0,230,118,0.12);
+  --emerald-glow:0 0 20px rgba(0,230,118,0.30);
+
+  --amber:       #ffb300;
+  --amber-dim:   rgba(255,179,0,0.12);
+  --amber-glow:  0 0 20px rgba(255,179,0,0.30);
+
+  --crimson:     #ff1744;
+  --crimson-dim: rgba(255,23,68,0.12);
+  --crimson-glow:0 0 22px rgba(255,23,68,0.35);
+
+  --cyan:        #00e5ff;
+  --cyan-dim:    rgba(0,229,255,0.10);
+  --violet:      #d500f9;
+
+  --text-1: #f0f0f0;
+  --text-2: #9e9e9e;
+  --text-3: #5a5a5a;
+
+  --font-ui:   'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --t:    0.2s ease;
+}
+
+/* ── Light Theme Overrides ─────────────────────────────────── */
+body[data-theme="light"] {
+  --bg:          #f4f6f9;
+  --bg-card:     #ffffff;
+  --bg-card-2:   #f0f2f5;
+  --bg-card-3:   #e8eaf0;
+  --border:      rgba(0,0,0,0.10);
+  --border-glow: rgba(0,0,0,0.15);
+
+  --text-1: #1a1a2e;
+  --text-2: #4a4a6a;
+  --text-3: #9090aa;
+}
+
+body[data-theme="light"] .anomaly-table td {
+  border-bottom-color: rgba(0,0,0,0.06);
+}
+body[data-theme="light"] .anomaly-table tr:hover td {
+  background: rgba(0,0,0,0.025);
+}
+body[data-theme="light"] .chat-drawer {
+  box-shadow: -4px 0 24px rgba(0,0,0,0.12);
+}
+body[data-theme="light"] .panel {
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+#root { width: 100%; height: 100vh; display: flex; max-width: none; border: none; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 99px; }
+
+body[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c0c0d0; }
