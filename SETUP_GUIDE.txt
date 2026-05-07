@@ -1,0 +1,342 @@
+================================================================================
+  GridSentinel AI v2.0 — Complete Setup Guide (Fresh Clone)
+  BESCOM Smart Grid Theft Detection & Transformer Stress Monitoring
+================================================================================
+
+PREREQUISITES (install these first if not already present)
+----------------------------------------------------------
+  - Python 3.11 or higher      https://www.python.org/downloads/
+  - Node.js 18 or higher       https://nodejs.org/
+  - Git                        https://git-scm.com/
+  - Ollama (for AI chat)       https://ollama.com/download
+
+  Verify installations by running:
+    python --version
+    node --version
+    git --version
+
+================================================================================
+  STEP 1 — Clone the repository
+================================================================================
+
+  Open a terminal and run:
+
+    git clone <your-github-repo-url> GridSentinel
+    cd GridSentinel
+
+  After cloning, your folder should contain:
+    - synthetic_grid_data.csv   (67 MB — the dataset)
+    - requirements.txt
+    - gridsentinel/             (Python backend package)
+    - frontend/                 (React frontend)
+    - scripts/                  (training scripts)
+    - config/default.yaml       (configuration)
+    - models/                   (this folder may be EMPTY after clone — see Step 4)
+
+================================================================================
+  STEP 2 — Set up Python virtual environment
+================================================================================
+
+  Windows (PowerShell):
+    python -m venv .venv
+    .venv\Scripts\Activate.ps1
+
+  Mac / Linux:
+    python -m venv .venv
+    source .venv/bin/activate
+
+  You should see (.venv) at the start of your terminal prompt.
+
+  NOTE: If PowerShell blocks the activation script, run this first:
+    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+================================================================================
+  STEP 3 — Install Python dependencies
+================================================================================
+
+  With the virtual environment active, run:
+
+    pip install --upgrade pip
+    pip install -r requirements.txt
+
+  This installs:
+    pandas, numpy, scipy, scikit-learn — data processing
+    xgboost 2.0                        — theft detection model
+    torch 2.2 (Bi-LSTM)               — demand forecasting model
+    tslearn                            — DTW clustering
+    shap                               — explainability
+    fastapi, uvicorn                   — REST API
+    fpdf2                              — PDF report generation
+    ollama                             — AI chat integration
+    python-jose, passlib, bcrypt       — JWT authentication
+    sqlalchemy                         — user/audit database
+
+  Also install the project package itself (editable mode):
+    pip install -e .
+
+  Installation will take 5-10 minutes depending on your internet speed.
+  PyTorch alone is ~2 GB download.
+
+================================================================================
+  STEP 4 — Train the ML models
+================================================================================
+
+  The trained model files (.pt, .pkl, .json) are NOT included in the git repo
+  because they are large binary files. You must train them from the CSV.
+
+  Run the pipeline script to train both models:
+
+    python scripts/run_pipeline.py --csv synthetic_grid_data.csv
+
+  This will:
+    - Load synthetic_grid_data.csv (1000 meters, 15-minute intervals)
+    - Engineer features (DTW clustering, CASS signals, GSI signals)
+    - Train XGBoost theft detector  -> saved to models/theft_detector.json
+    - Train Bi-LSTM demand forecaster -> saved to models/demand_forecaster.pt
+                                         and models/demand_scaler.pkl
+    - Print classification and forecast metrics
+
+  Expected training time: 3-8 minutes on a modern CPU.
+  If you have a CUDA GPU, PyTorch will use it automatically.
+
+  ALTERNATIVELY — train only the demand forecaster (faster):
+    python scripts/train_forecaster.py --csv synthetic_grid_data.csv
+
+================================================================================
+  STEP 5 — Set up Ollama (AI Chat — optional but recommended)
+================================================================================
+
+  Ollama enables the natural language chat panel in the dashboard.
+  It runs fully locally — no internet or API key required.
+
+  5a. Install Ollama from https://ollama.com/download and run the installer.
+
+  5b. Pull the LLaMA 3.2 model (open a NEW terminal window):
+
+      Windows: ollama pull llama3.2
+      Mac/Linux: ollama pull llama3.2
+
+      If "ollama" is not recognised, use the full path:
+      Windows: & "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe" pull llama3.2
+
+  5c. Start the Ollama service (keep this terminal open):
+
+      Windows: & "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe" serve
+      Mac/Linux: ollama serve
+
+      Ollama listens on http://localhost:11434 by default.
+
+  NOTE: If Ollama is unavailable, the chat panel falls back to a keyword-based
+        response engine automatically. All other features still work.
+
+================================================================================
+  STEP 6 — Start the backend API server
+================================================================================
+
+  In your terminal (with .venv activated), from the GridSentinel folder:
+
+    python -m uvicorn gridsentinel.api.app:app --reload --host 0.0.0.0 --port 8000
+
+  You should see output like:
+    INFO:     Loaded CSV from synthetic_grid_data.csv: ... meter rows
+    INFO:     CASS scores computed for 1000 meters
+    INFO:     Uvicorn running on http://0.0.0.0:8000
+
+  Keep this terminal open. The API is now live at:
+    http://localhost:8000
+    http://localhost:8000/docs     (interactive API docs — Swagger UI)
+    http://localhost:8000/health   (health check)
+
+  IMPORTANT: If you see "synthetic_grid_data.csv not found", make sure:
+    - The CSV file exists in the GridSentinel root folder
+    - You are running the command from inside the GridSentinel folder
+    - Or set the environment variable: $env:GS_DATA_PATH = "C:\path\to\synthetic_grid_data.csv"
+
+================================================================================
+  STEP 7 — Set up and start the frontend
+================================================================================
+
+  Open a NEW terminal window (leave the backend running), then:
+
+    cd GridSentinel\frontend       (Windows)
+    cd GridSentinel/frontend       (Mac/Linux)
+
+    npm install
+    npm run dev
+
+  You should see:
+    VITE v8.x.x  ready in xxx ms
+    -> Local:   http://localhost:5173/
+
+  Open http://localhost:5173 in your browser.
+
+================================================================================
+  STEP 8 — Log in and explore the dashboard
+================================================================================
+
+  Default credentials:
+    Username: admin
+    Password: bescom2026
+
+  After login you will see:
+
+  DASHBOARD (main view)
+    - Live Score Feed: real-time CASS risk scores streaming every 10 seconds
+    - Anomalous Cluster Feed: top meters ranked by theft suspicion
+    - Click any meter row to load its DTW Divergence chart and SHAP analysis
+    - GSI Gauge: current transformer stress index
+
+  PREDICTION TAB (demand forecast)
+    - Select a transformer (DT_1 through DT_N) from the dropdown
+    - View actual vs Bi-LSTM predicted demand with Q5/Q95 confidence bands
+    - GSI score, recommended action, and stress factor table
+
+  AI CHAT (speech bubble icon, bottom-left sidebar)
+    - Type natural language queries
+    - Examples: "MTR_000010 anomaly", "DT_1 stress", "show theft meters"
+    - Powered by Ollama llama3.2 locally; keyword fallback if Ollama is off
+
+  AUDIT LOG TAB
+    - Last 50 system actions (meter lookups, forecasts, logins)
+
+  PDF REPORT (⬇ PDF button in top-right header)
+    - Downloads a live intelligence report with top anomalous meters,
+      economic impact summary, and transformer GSI scores
+
+================================================================================
+  STEP 9 — Using your own CSV data
+================================================================================
+
+  To use real or different data, replace synthetic_grid_data.csv with your own.
+  Your CSV must have these columns (column names are case-sensitive):
+
+    Meter_ID              — unique meter identifier (e.g. MTR_000001)
+    Transformer_ID        — which DT the meter belongs to (e.g. DT_1)
+    Timestamp             — datetime of reading (e.g. 2026-05-01 00:00:00)
+    Active_Power (kWh)    — energy consumed in this interval
+    Voltage               — phase voltage reading (V)
+    Current               — current draw (A)
+    Power_Factor          — real/apparent power ratio (0-1)
+    Is_Theft (0/1)        — ground truth theft label (0=normal, 1=theft)
+    Imputation_Flag       — was this row imputed? (0/1)
+    Imputation_Confidence — confidence of imputation (0.0-1.0)
+
+  Optional columns (can be left blank or omitted):
+    Peer_Group_ID, Theft_Type, GSI_Event_Type, Topology_Confidence
+
+  After replacing the CSV:
+    1. Re-run: python scripts/run_pipeline.py --csv your_data.csv
+    2. Restart the backend server
+
+================================================================================
+  QUICK-START SUMMARY (all terminals at a glance)
+================================================================================
+
+  Terminal 1 — Ollama AI (optional, keep running):
+    ollama serve
+
+  Terminal 2 — Backend API (keep running):
+    cd GridSentinel
+    .venv\Scripts\Activate.ps1       (Windows)
+    source .venv/bin/activate        (Mac/Linux)
+    python -m uvicorn gridsentinel.api.app:app --reload --port 8000
+
+  Terminal 3 — Frontend (keep running):
+    cd GridSentinel\frontend
+    npm run dev
+
+  Browser:
+    Open http://localhost:5173
+    Login: admin / bescom2026
+
+================================================================================
+  TROUBLESHOOTING
+================================================================================
+
+  "ModuleNotFoundError: No module named 'gridsentinel'"
+    -> Run: pip install -e .
+    -> Make sure your virtual environment is activated
+
+  "synthetic_grid_data.csv not found — endpoints will return demo data"
+    -> Ensure the CSV is in the GridSentinel root folder
+    -> Run uvicorn from inside the GridSentinel folder (not a subfolder)
+
+  "ollama: command not found" / "not recognized"
+    Windows: Use full path: & "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe" serve
+    Mac: Check /usr/local/bin/ollama exists; reinstall from ollama.com
+
+  "Cannot connect to http://localhost:8000" (frontend shows no data)
+    -> Check Terminal 2 — the backend must be running
+    -> Check for Python errors in Terminal 2
+
+  "torch" installation fails or is very slow
+    -> Install PyTorch separately from https://pytorch.org/get-started/locally/
+    -> For CPU-only: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+  models/ folder is empty (no .pt or .json files)
+    -> Run: python scripts/run_pipeline.py --csv synthetic_grid_data.csv
+    -> Training is required before demand forecasts work
+
+  Frontend shows "npm: command not found"
+    -> Install Node.js from https://nodejs.org/ and restart your terminal
+
+  Port 8000 already in use
+    -> Change port: python -m uvicorn gridsentinel.api.app:app --port 8001
+    -> Update frontend/vite.config.js proxy target to match new port
+
+================================================================================
+  PROJECT STRUCTURE (for reference)
+================================================================================
+
+  GridSentinel/
+  |-- gridsentinel/
+  |   |-- api/
+  |   |   |-- app.py          FastAPI application, all REST endpoints
+  |   |   |-- auth.py         JWT authentication
+  |   |   |-- database.py     SQLAlchemy models (users, audit log)
+  |   |   `-- schemas.py      Pydantic request/response schemas
+  |   |-- features/
+  |   |   |-- cass_signals.py 7 CASS signal functions (theft detection)
+  |   |   |-- gsi_signals.py  8 GSI signal functions (grid stress)
+  |   |   |-- feature_store.py Feature matrix builder for XGBoost + LSTM
+  |   |   `-- holidays.py     Indian public holiday calendar
+  |   |-- models/
+  |   |   |-- theft_detector.py  XGBoost classifier wrapper
+  |   |   |-- demand_forecaster.py  Bi-LSTM quantile forecaster
+  |   |   `-- explainability.py SHAP value computation
+  |   |-- scoring/
+  |   |   |-- cass.py         CASS score formula + sigmoid + PV correction
+  |   |   |-- gsi.py          GSI score formula + topology confidence
+  |   |   |-- gss.py          Grid Sentinel Score (composite metric)
+  |   |   `-- economic.py     Revenue protection / cost model
+  |   |-- ingestion/
+  |   |   |-- loader.py       CSV loader, column mapping, DT derivation
+  |   |   `-- validator.py    Schema validation
+  |   |-- pipeline.py         18-step end-to-end pipeline orchestrator
+  |   `-- config.py           YAML config loader
+  |
+  |-- frontend/
+  |   |-- src/
+  |   |   |-- App.jsx         Main dashboard, all React state and views
+  |   |   |-- App.css         All styling
+  |   |   `-- components/
+  |   |       |-- TheftChart.jsx   DTW divergence + CASS chart
+  |   |       |-- AlertView.jsx    Alert management view
+  |   |       |-- PredView.jsx     Demand forecast view
+  |   |       `-- AuditView.jsx    Audit log view
+  |   `-- vite.config.js      Dev server config (proxies /api to :8000)
+  |
+  |-- scripts/
+  |   |-- run_pipeline.py     Full training + evaluation pipeline
+  |   `-- train_forecaster.py Demand forecaster training only
+  |
+  |-- config/default.yaml     All tunable parameters (weights, thresholds)
+  |-- models/                 Trained model files (generated by scripts)
+  |-- synthetic_grid_data.csv 1000 meters, 15-min intervals, 1 day
+  |-- requirements.txt        Python dependencies
+  `-- pyproject.toml          Package metadata
+
+================================================================================
+  END OF SETUP GUIDE
+  GridSentinel AI v2.0 — BESCOM Hackathon Project
+================================================================================

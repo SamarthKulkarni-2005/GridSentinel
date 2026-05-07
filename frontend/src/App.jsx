@@ -464,6 +464,31 @@ export default function App() {
     setIsAuthenticated(false);
   };
 
+  const [reportLoading, setReportLoading] = useState(false);
+  const handleDownloadReport = async () => {
+    setReportLoading(true);
+    try {
+      const token = localStorage.getItem('gs_token');
+      const resp = await fetch('/api/report/summary', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `GridSentinel_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Report generation failed: ' + err.message);
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   // Auto-logout on any 401 from axios (expired token)
   useEffect(() => {
     const id = api.interceptors.response.use(
@@ -576,6 +601,16 @@ export default function App() {
               </div>
             </div>
           )}
+          {/* Download PDF Report */}
+          <button
+            className="theme-toggle-btn"
+            onClick={handleDownloadReport}
+            disabled={reportLoading}
+            title="Download Intelligence Report (PDF)"
+            style={{ fontSize: '0.75rem', opacity: reportLoading ? 0.6 : 1, width: 'auto', padding: '0 10px', gap: 4, cursor: reportLoading ? 'not-allowed' : 'pointer' }}
+          >
+            {reportLoading ? '⏳' : '⬇ PDF'}
+          </button>
           {/* Dark/Light toggle */}
           <button
             className="theme-toggle-btn"

@@ -17,7 +17,7 @@ cass:
     repeat_anomaly: 0.05
   # Sigmoid parameters
   sigmoid_shift: 0.35
-  sigmoid_scale: 8.0
+  sigmoid_scale: 4.0
   # Normalisation denominators (calibrated to field data)
   dtw_norm_denom: 3.0
   voltage_std_norm: 0.15

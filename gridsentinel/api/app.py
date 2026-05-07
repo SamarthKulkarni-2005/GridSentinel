@@ -468,22 +468,35 @@ async def anomaly_detail(meter_id: str, db: Session = Depends(get_db)) -> Anomal
 
     meter_slice = meter_slice.copy()
     meter_slice["hour"] = meter_slice["timestamp"].dt.hour
-    hourly_target = meter_slice.groupby("hour")["kwh"].mean()
+    hourly_target = (
+        meter_slice.groupby("hour")["kwh"].mean()
+        .reindex(range(24))
+        .interpolate(method="linear")
+        .bfill()
+        .ffill()
+    )
 
     if not peer_df.empty:
         peer_cp = peer_df.copy()
         peer_cp["hour"] = peer_cp["timestamp"].dt.hour
-        hourly_peer = peer_cp.groupby("hour")["kwh"].mean()
+        hourly_peer = (
+            peer_cp.groupby("hour")["kwh"].mean()
+            .reindex(range(24))
+            .interpolate(method="linear")
+            .bfill()
+            .ffill()
+        )
     else:
         hourly_peer = hourly_target * 0.85
 
-    dtw_series = []
-    for h in range(24):
-        dtw_series.append({
-            "hour": h,
-            "peer_avg": round(float(hourly_peer.get(h, hourly_peer.mean())), 3),
-            "target":   round(float(hourly_target.get(h, hourly_target.mean())), 3),
-        })
+    dtw_series = [
+        {
+            "hour":     h,
+            "peer_avg": round(float(hourly_peer.iloc[h]), 3),
+            "target":   round(float(hourly_target.iloc[h]), 3),
+        }
+        for h in range(24)
+    ]
 
     scores = _store.get("meter_scores", pd.Series(dtype=float))
     cass = float(scores.get(normalised, 60.0))
@@ -903,11 +916,14 @@ async def economic_summary():
         critical_count = 3
         watch_count    = 7
     else:
-        critical_count = int((scores > 80).sum())
-        watch_count    = int(((scores >= 50) & (scores <= 80)).sum())
+        # critical: CASS >= 60 (Inspect + Immediate), watch: CASS 35-60 (Watch)
+        critical_count = int((scores >= 60).sum())
+        watch_count    = int(((scores >= 35) & (scores < 60)).sum())
 
-    estimated_protection = critical_count * 5500 * 3
-    investigation_cost   = watch_count * 8500
+    # Protection: critical meters → full 3-month theft recovery; watch → 1-month partial
+    estimated_protection = (critical_count * 5500 * 3) + (watch_count * 5500 * 1)
+    # Investigation cost: ₹2,500 field visit per flagged meter
+    investigation_cost   = (critical_count + watch_count) * 2500
     net_benefit          = estimated_protection - investigation_cost
 
     return {
@@ -1030,16 +1046,16 @@ async def report_summary():
 
     scores: pd.Series = _store.get("meter_scores", pd.Series(dtype=float))
 
-    # Economic summary data
+    # Economic summary data (same logic as /api/economic/summary)
     if scores.empty:
         critical_count = 3
         watch_count    = 7
     else:
-        critical_count = int((scores > 80).sum())
-        watch_count    = int(((scores >= 50) & (scores <= 80)).sum())
+        critical_count = int((scores >= 60).sum())
+        watch_count    = int(((scores >= 35) & (scores < 60)).sum())
 
-    estimated_protection = critical_count * 5500 * 3
-    investigation_cost   = watch_count * 8500
+    estimated_protection = (critical_count * 5500 * 3) + (watch_count * 5500 * 1)
+    investigation_cost   = (critical_count + watch_count) * 2500
     net_benefit          = estimated_protection - investigation_cost
 
     # Top 5 meters
